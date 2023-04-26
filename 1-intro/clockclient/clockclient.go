@@ -16,7 +16,7 @@ func main() {
 	sleep := flag.Int64("sleep", 1000, "timeout between dials in milliseconds")
 	host := flag.String("host", "", "server hostname")
 	port := flag.Int("port", 8080, "server port")
-	requests := flag.Int64("max", 100, "requests max (greater than 4 trials and less than 6 digits)")
+	requests := flag.Int64("max", 100, "requests max (greater than 4 trials and less than 4 digits)")
 	flag.Parse()
 
 	if *sleep < 1 {
