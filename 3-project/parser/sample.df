@@ -1,0 +1,7 @@
+root <- dep1 dep2;
+
+dep1 <- dep3;
+
+dep2 <- dep3;
+
+dep3 <- dep4;
