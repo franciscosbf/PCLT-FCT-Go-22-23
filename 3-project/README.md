@@ -5,7 +5,9 @@ author: Anibal Cavaco Silva
 date: yesterday
 ---
 
-This project is due on 12th December of at 12:12 AM/PM.
+### Solution explanation [here](./solution.md)!
+
+This project is due on 12th December 2012 of at 12:12 AM/PM.
 
 # Building Things Concurrently
 

@@ -3,6 +3,7 @@ package builder
 import (
 	"cpl_go_proj22/parser"
 	"log"
+	"os"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ d2 <- d3 d4;
 	} 
 	
 	if len(dG.leafs) != 2 {
-		log.Printf("Invalid nodes map. expect=[d3, d4] got=%v", dG.leafs)
+		t.Errorf("Invalid nodes map. expect=[d3, d4] got=%v", dG.leafs)
 	}
 	for _, f := range []string{"d3", "d4"} {
 		if _, ok := dG.leafs[f]; !ok {
@@ -116,5 +117,44 @@ d2 <- d3 d4 d5;
 	checkInfo("d3", 0, "d1", "d2")
 	checkInfo("d4", 0, "d2")
 	checkInfo("d5", 0, "d2")
+}
+
+// Assumes that all files don't exist
+func TestBuildResult(t *testing.T) {
+	// TODO: change this little hack
+	path := os.Getenv("OUT_PATH")
+	if path == "" {
+		path = "/tmp"
+	}
+	if err := os.Chdir(path); err != nil {
+		log.Fatalf("Couldn't change to directory %q: %v", path, err)
+	}
+
+	s := `
+r  <- d2 d4 d6 d5 d9;
+d2 <- d3 d8;
+d4 <- d5 d6 d8;
+d6 <- d7 d9;
+`
+
+	dFile, _ := parser.Parse(s)
+
+	tunnel := MakeController(dFile)
+	if tunnel == nil {
+		t.Fatal("Channel is nil")
+	}
+
+	msg := <-tunnel
+	if msg == nil {
+		t.Fatal("Message is nil")
+	}
+
+	if msg.Type != BuildSuccess {
+		t.Fatalf("Got an unnexpected error: %v", msg.Err)
+	}
+}
+
+func TestBuildWithErrors(t *testing.T) {
+	// TODO:
 }
 

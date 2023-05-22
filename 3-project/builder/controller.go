@@ -34,13 +34,13 @@ type fileInfo struct {
 }
 
 func (f *fileInfo) propagate(t time.Time) {
-	log.Printf(
-		"%q has started to propagate build time %v to %v", 
-		f.filename, t, f.dependants,
-	)
 	for _, dep := range f.dependants {
 		f.nodes[dep].timesCh <-t	
 	}
+	log.Printf(
+		"%q propagated build time %q to %v", 
+		f.filename, t, f.dependants,
+	)
 }
 
 // build tries to build the file 
@@ -125,8 +125,7 @@ func MakeController(file *parser.DepFile) chan *Msg {
 	var workersWg sync.WaitGroup
 	workersWg.Add(workersN)
 
-	createChs := func(info *fileInfo) {
-		info.timesCh = make(chan time.Time, 1)
+	initCommonChs := func(info *fileInfo) {
 		info.panicCh = make(chan struct{}, 1)
 		info.errorCh = errorCh
 	}
@@ -134,15 +133,20 @@ func MakeController(file *parser.DepFile) chan *Msg {
 	// Spawn target workers
 	log.Printf("Spawning %d target workers", len(dG.targets))
 	for _, info := range dG.targets { // INFO: speed up this thing
-		createChs(info)
+		initCommonChs(info)
+		info.timesCh = make(chan time.Time, info.dependencies)
 		// Spawn worker
 		go func(info *fileInfo, wg *sync.WaitGroup) {
 			defer wg.Done()
 
 			deps := info.dependencies
-
+			
 			sTime, err := utils.Status(info.filename)
 			if err != nil {
+				log.Printf(
+					"%q doesn't exist. Proceeds to build after wait", 
+					info.filename,
+				)
 				// Only needs to wait for its dependencies
 				for ; deps > 0; deps-- {
 					select {
@@ -167,10 +171,13 @@ func MakeController(file *parser.DepFile) chan *Msg {
 						// than a given dep
 						continue
 					}	
-					log.Printf("%q needs to be built", info.filename)
+					log.Printf(
+						"%q needs to be built. Proceeds to wait",
+						info.filename,
+					)
 					// Doesn't build right after since we 
 					// need to wait for the remaining deps
-					for ; deps > 0; deps-- {
+					for deps--; deps > 0; deps-- {
 						select {
 						case <-info.panicCh:
 							return
@@ -191,12 +198,14 @@ func MakeController(file *parser.DepFile) chan *Msg {
 	// Spawn leaf workers
 	log.Printf("Spawning %d leaf workers", len(dG.leafs))
 	for _, info := range dG.leafs { // INFO: speed up this thing...
-		createChs(info)
+		initCommonChs(info)
 		go func(info *fileInfo, wg *sync.WaitGroup) {
 			defer wg.Done()
 			
-			if _, ok := <-info.panicCh; ok {
+			select {
+			case <-info.panicCh:
 				return // Something went wrong
+			default:
 			}
 
 			t, err := utils.Status(info.filename)
@@ -208,18 +217,13 @@ func MakeController(file *parser.DepFile) chan *Msg {
 		}(info, &workersWg)
 	}
 
-	endManagerCh := make(chan struct{})
-	errMsgCh := make(chan *Msg)
+	errMsgCh := make(chan *Msg, 1)
 
 	// Core manager 
 	go func() {
-		var err *Msg
-
-		select {
-		case err = <-errorCh:
-		case <-endManagerCh:
-			return
-		}
+		err := <-errorCh
+		// Sends error to reconciler
+		errMsgCh <-err
 	
 		log.Printf("Core manager has received an error: %v", err.Err)
 
@@ -235,18 +239,17 @@ func MakeController(file *parser.DepFile) chan *Msg {
 			info.panicCh <- empty
 		}
 		
-		// Sends error to reconciler
-		errMsgCh <-err
 	}()
 
 	// Reconciler
 	go func(wg *sync.WaitGroup) {
 		wg.Wait()
-		msg, ok := <-errMsgCh
-		if !ok {
+		var msg *Msg
+		select {
+		case msg = <-errMsgCh:
+		default:
 			// Everything went ok
 			msg = &Msg{Type: BuildSuccess}
-			endManagerCh <-struct{}{}
 		}
 		reqCh <- msg
 	}(&workersWg)
