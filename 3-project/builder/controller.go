@@ -138,8 +138,8 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 		initCommonChs(info)
 		info.timesCh = make(chan time.Time, info.dependencies)
 		// Spawn worker
-		go func(info *fileInfo, wg *sync.WaitGroup) {
-			defer wg.Done()
+		go func(info *fileInfo) {
+			defer workersWg.Done()
 
 			deps := info.dependencies
 			
@@ -194,15 +194,15 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 			// There isn't any dep whose uptime
 			// is greater than the target
 			info.propagate(sTime)
-		}(info, &workersWg)
+		}(info)
 	}
 
 	// Spawn leaf workers
 	log.Printf("Spawning %d leaf workers", len(dG.leafs))
 	for _, info := range dG.leafs { // INFO: speed up this thing...
 		initCommonChs(info)
-		go func(info *fileInfo, wg *sync.WaitGroup) {
-			defer wg.Done()
+		go func(info *fileInfo) {
+			defer workersWg.Done()
 			
 			select {
 			case <-info.panicCh:
@@ -217,7 +217,7 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 				return
 			}
 			info.propagate(t)
-		}(info, &workersWg)
+		}(info)
 	}
 
 	errMsgCh := make(chan *Msg, 1)
@@ -245,8 +245,8 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 	}()
 
 	// Reconciler
-	go func(wg *sync.WaitGroup) {
-		wg.Wait()
+	go func() {
+		workersWg.Wait()
 		var msg *Msg
 		select {
 		case msg = <-errMsgCh:
@@ -255,7 +255,7 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 			msg = &Msg{Type: BuildSuccess}
 		}
 		reqCh <- msg
-	}(&workersWg)
+	}()
 
 	return reqCh
 }
