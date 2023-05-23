@@ -11,11 +11,11 @@ import (
 var missing = errors.New("missing file")
 
 type buildError struct {
-	file string
+	filename string
 }
 
 func (e *buildError) Error() string {
-	return ""
+	return fmt.Sprintf("build error on file %q", e.filename)
 }
 
 type fakeFileInfo struct {
@@ -40,7 +40,7 @@ func (s *fakeScan) Status(filename string) (time.Time, error) {
 func (s *fakeScan) Build(filename string) (time.Time, error) {
 	info := s.files[filename]
 	if info.fail {
-		return time.Time{}, &buildError{file: filename}
+		return time.Time{}, &buildError{filename: filename}
 	}
 
 	return time.Now(), nil // current time used to force build on dependants
@@ -246,8 +246,8 @@ d5 <- d6 d8;
 		t.Fatalf("Err isn't of type buildError: got=%v", err)
 	}
 
-	if err.file != "d1" && err.file != "d5" {
-		t.Fatalf("Expecting build error from d1 or d5. got=%s", err.file)
+	if err.filename != "d1" && err.filename != "d5" {
+		t.Fatalf("Expecting build error from d1 or d5. got=%s", err.filename)
 	}
 }
 
