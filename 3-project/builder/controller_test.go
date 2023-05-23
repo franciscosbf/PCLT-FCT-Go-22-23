@@ -2,10 +2,55 @@ package builder
 
 import (
 	"cpl_go_proj22/parser"
-	"log"
-	"os"
+	"errors"
+	"fmt"
 	"testing"
+	"time"
 )
+
+var missing = errors.New("missing file")
+
+type buildError struct {
+	file string
+}
+
+func (e *buildError) Error() string {
+	return ""
+}
+
+type fakeFileInfo struct {
+	fail bool
+	time *time.Time
+}
+
+// Scan represents the worst mock-up ever seen
+type fakeScan struct {
+	files map[string]*fakeFileInfo
+}
+
+func (s *fakeScan) Status(filename string) (time.Time, error) {
+	info := s.files[filename]
+	if info.time == nil {
+		return time.Time{}, missing
+	}
+
+	return *info.time, nil
+}
+
+func (s *fakeScan) Build(filename string) (time.Time, error) {
+	info := s.files[filename]
+	if info.fail {
+		return time.Time{}, &buildError{file: filename}
+	}
+
+	return time.Now(), nil // current time used to force build on dependants
+}
+
+// convertTime expects convertTime in the format %d%d
+func convertTime(day string) *time.Time {
+	t, _ := time.Parse("2001-01-01", fmt.Sprintf("2001-01-%s", day))
+	return &t
+}
 
 func TestGraphContent(t *testing.T) {
 	s := `
@@ -119,27 +164,31 @@ d2 <- d3 d4 d5;
 	checkInfo("d5", 0, "d2")
 }
 
-// Assumes that all files don't exist
-func TestBuildResult(t *testing.T) {
-	// TODO: change this little hack
-	path := os.Getenv("OUT_PATH")
-	if path == "" {
-		path = "/tmp"
-	}
-	if err := os.Chdir(path); err != nil {
-		log.Fatalf("Couldn't change to directory %q: %v", path, err)
+func TestBuildWihoutErrors(t *testing.T) {
+	fileScan := &fakeScan{
+		files: map[string]*fakeFileInfo{
+			 "r": {time: convertTime("01")},
+			"d1": {time: convertTime("04")},
+			"d2": {time: convertTime("03")},
+			"d3": {time: convertTime("06")},
+			"d4": {},
+			"d5": {},
+			"d6": {time: convertTime("02")},
+			"d7": {},
+			"d8": {time: convertTime("01")},
+		},
 	}
 
 	s := `
-r  <- d2 d4 d6 d5 d9;
-d2 <- d3 d8;
-d4 <- d5 d6 d8;
-d6 <- d7 d9;
+r  <- d1 d3 d5 d4 d8;
+d1 <- d2 d7;
+d3 <- d1 d4 d5 d7;
+d5 <- d6 d8;
 `
 
 	dFile, _ := parser.Parse(s)
 
-	tunnel := MakeController(dFile)
+	tunnel := MakeController(dFile, fileScan)
 	if tunnel == nil {
 		t.Fatal("Channel is nil")
 	}
@@ -155,6 +204,50 @@ d6 <- d7 d9;
 }
 
 func TestBuildWithErrors(t *testing.T) {
-	// TODO:
+	fileScan := &fakeScan{
+		files: map[string]*fakeFileInfo{
+			 "r": {time: convertTime("01")},
+			"d1": {time: convertTime("04"), fail: true},
+			"d2": {time: convertTime("03")},
+			"d3": {time: convertTime("06")},
+			"d4": {},
+			"d5": {fail: true},
+			"d6": {time: convertTime("02")},
+			"d7": {},
+			"d8": {time: convertTime("01")},
+		},
+	}
+
+	s := `
+r  <- d1 d3 d5 d4 d8;
+d1 <- d2 d7;
+d3 <- d1 d4 d5 d7;
+d5 <- d6 d8;
+`
+
+	dFile, _ := parser.Parse(s)
+
+	tunnel := MakeController(dFile, fileScan)
+	if tunnel == nil {
+		t.Fatal("Channel is nil")
+	}
+
+	msg := <-tunnel
+	if msg == nil {
+		t.Fatal("Message is nil")
+	}
+
+	if msg.Type != BuildError {
+		t.Fatal("Expecting message of type BuildError")
+	}
+
+	err, ok := msg.Err.(*buildError)
+	if !ok {
+		t.Fatalf("Err isn't of type buildError: got=%v", err)
+	}
+
+	if err.file != "d1" && err.file != "d5" {
+		t.Fatalf("Expecting build error from d1 or d5. got=%s", err.file)
+	}
 }
 

@@ -3,10 +3,11 @@ package main
 import (
 	"cpl_go_proj22/builder"
 	"cpl_go_proj22/parser"
+	"cpl_go_proj22/utils"
 	"flag"
 	"fmt"
+	"log"
 	"os"
-	"time"
 )
 
 func oneShot(c chan *builder.Msg) {
@@ -19,30 +20,25 @@ func oneShot(c chan *builder.Msg) {
 }
 
 func main() {
-	watch := flag.Bool("w", false, "set flag to true to maintain watch over dependencies.")
+	path := flag.String("d", "", "Files location, (current directory by default)")
 	flag.Parse()
 	args := flag.Args()
 	if len(args) < 1 {
-		fmt.Println("Usage: project [-w] <depfile>")
+		fmt.Println("Usage: project [-d] <location>")
 		os.Exit(0)
 	}
 	fileName := args[0]
 
 	dFile, err := parser.ParseFile(fileName)
 	if err != nil {
-		_ = fmt.Errorf(err.Error())
-		os.Exit(1)
+		log.Fatal(err.Error())
 	}
 
-	ch := builder.MakeController(dFile)
-	if *watch {
-		fmt.Println("Starting build in watch mode.")
-		for {
-			oneShot(ch)
-			time.Sleep(time.Second)
-		}
-	} else {
-		oneShot(ch)
+	var scan *utils.FileScan
+	if scan, err = utils.NewFileScan(*path); err != nil {
+		log.Fatal(err.Error())
 	}
 
+	ch := builder.MakeController(dFile, scan)
+	oneShot(ch)
 }

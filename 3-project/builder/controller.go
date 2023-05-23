@@ -28,6 +28,7 @@ type fileInfo struct {
 	nodes map[string]*fileInfo
 
 	// Set when spawning workers
+	utils.Scan	
 	timesCh chan time.Time
 	panicCh chan struct{} // When some error happens
 	errorCh chan *Msg // Communicate with the error controller
@@ -47,7 +48,7 @@ func (f *fileInfo) propagate(t time.Time) {
 // and sends the build time to its
 // dependants.
 func (f *fileInfo) build() {
-	t, err := utils.Build(f.filename)
+	t, err := f.Build(f.filename)
 	if err != nil {
 		log.Printf(
 			"Error while trying to build %q: %v", 
@@ -114,7 +115,7 @@ func buildGraph(file *parser.DepFile) *depGraph {
 	return dG
 }
 
-func MakeController(file *parser.DepFile) chan *Msg {
+func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 	dG := buildGraph(file)
 
 	workersN := len(dG.targets) + len(dG.leafs)
@@ -126,6 +127,7 @@ func MakeController(file *parser.DepFile) chan *Msg {
 	workersWg.Add(workersN)
 
 	initCommonChs := func(info *fileInfo) {
+		info.Scan = fileScan
 		info.panicCh = make(chan struct{}, 1)
 		info.errorCh = errorCh
 	}
@@ -141,7 +143,7 @@ func MakeController(file *parser.DepFile) chan *Msg {
 
 			deps := info.dependencies
 			
-			sTime, err := utils.Status(info.filename)
+			sTime, err := info.Status(info.filename)
 			if err != nil {
 				log.Printf(
 					"%q doesn't exist. Proceeds to build after wait", 
@@ -208,8 +210,9 @@ func MakeController(file *parser.DepFile) chan *Msg {
 			default:
 			}
 
-			t, err := utils.Status(info.filename)
+			t, err := info.Status(info.filename)
 			if err != nil {
+				log.Printf("%q doesn't exist. Proceeds to build", info.filename)
 				info.build()
 				return
 			}

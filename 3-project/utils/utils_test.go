@@ -7,10 +7,23 @@ import (
 	"testing"
 )
 
+var fileScan *FileScan
+
+func init() {
+	path := os.Getenv("UTILS_TEST_PATH")
+	if path == "" {
+		path = "./"
+	}
+	var err error
+	if fileScan, err = NewFileScan(path); err != nil {
+		panic(err)
+	}
+}
+
 func TestFreshBuild(t *testing.T) {
 	s := "foo"
-	os.Remove(s)
-	_, err := Build(s)
+	fileScan.remove(s)
+	_, err := fileScan.Build(s)
 	if err != nil {
 		t.Error("Build failed,")
 		return
@@ -35,10 +48,10 @@ func TestFreshBuild(t *testing.T) {
 
 func TestBuildInc(t *testing.T) {
 	s := "foo"
-	f, _ := os.Create(s)
+	f := fileScan.create(s)
 	f.WriteString(strconv.Itoa(10) + " times built.\n")
 	f.Close()
-	Build(s)
+	fileScan.Build(s)
 	f, _ = os.Open(s)
 	scan := bufio.NewScanner(f)
 	scan.Split(bufio.ScanWords)
@@ -54,8 +67,8 @@ func TestBuildInc(t *testing.T) {
 
 func TestStatusNew(t *testing.T) {
 	s := "bar"
-	os.Remove(s)
-	_, err := Status(s)
+	fileScan.remove(s)
+	_, err := fileScan.Status(s)
 	if err == nil {
 		t.Error("File was not there, should error.")
 	}
@@ -66,11 +79,11 @@ func TestStatusExisting(t *testing.T) {
 	s := "bar"
 	f, _ := os.Create(s)
 	f.Close()
-	time1, err := Status(s)
+	time1, err := fileScan.Status(s)
 	if err != nil {
 		t.Error("File was there, should not have errored.")
 	}
-	time2, _ := Status(s)
+	time2, _ := fileScan.Status(s)
 	os.Remove(s)
 	if time1 != time2 {
 		t.Error("Times should match.")
