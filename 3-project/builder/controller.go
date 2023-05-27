@@ -4,8 +4,14 @@ import (
 	"cpl_go_proj22/parser"
 	"cpl_go_proj22/utils"
 	"log"
+	"runtime"
 	"sync"
 	"time"
+)
+
+var (
+	numCpus = runtime.NumCPU()
+	cpusMargin = 4
 )
 
 type MsgType = int
@@ -115,6 +121,104 @@ func buildGraph(file *parser.DepFile) *depGraph {
 	return dG
 }
 
+func targetWorker(info *fileInfo, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	deps := info.dependencies
+	
+	sTime, err := info.Status(info.filename)
+	if err != nil {
+		log.Printf(
+			"%q doesn't exist. Proceeds to build after wait", 
+			info.filename,
+		)
+		// Only needs to wait for its dependencies
+		for ; deps > 0; deps-- {
+			select {
+			case <-info.panicCh:
+				return
+			case <-info.timesCh:
+			}
+		}	
+		info.build()
+		return
+	}
+
+	// Waits until some of its dependencies
+	// has an update time greater than the target
+	for ; deps > 0; deps-- {
+		select {
+		case <-info.panicCh:
+			return
+		case t := <-info.timesCh:
+			if sTime.After(t) {
+				// Target is more recent
+				// than a given dep
+				continue
+			}	
+			log.Printf(
+				"%q needs to be built. Proceeds to wait",
+				info.filename,
+			)
+			// Doesn't build right after since we 
+			// need to wait for the remaining deps
+			for deps--; deps > 0; deps-- {
+				select {
+				case <-info.panicCh:
+					return
+				case <-info.timesCh:
+				}
+			}
+			info.build()
+			return
+		}
+	}
+	
+	// There isn't any dep whose uptime
+	// is greater than the target
+	info.propagate(sTime)
+}
+
+func spawnTargetWorkers( 
+	targets []*fileInfo,	
+	fileScan utils.Scan, 
+	errorCh chan *Msg,
+	workersWg *sync.WaitGroup,
+) {
+	initCommonChs := func(info *fileInfo) {
+		info.timesCh = make(chan time.Time, info.dependencies)
+		info.Scan = fileScan
+		info.panicCh = make(chan struct{}, 1)
+		info.errorCh = errorCh
+	}
+
+	sz := len(targets)
+	if numCpus > 1 {
+		if sz < numCpus * cpusMargin { goto linear }
+		log.Printf("Spawning %d target workers with %d sub-spawners", sz, numCpus)
+		var wg sync.WaitGroup
+		wg.Add(numCpus)
+		for i := numCpus - 1; i >= 0; i-- {
+			go func(i, j int) {
+				defer wg.Done()
+				for ; i < j; i++ {
+					info := targets[i]
+					initCommonChs(info)
+					go targetWorker(info, workersWg)
+				}
+			}(i * sz / numCpus, (i + 1) * sz / numCpus)
+		}
+		wg.Wait()
+		return
+	}
+	linear:
+	log.Printf("Spawning %d target workers", sz)
+	for _, info := range targets {
+		initCommonChs(info)
+		go targetWorker(info, workersWg)
+	}
+}
+
 func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 	dG := buildGraph(file)
 
@@ -132,70 +236,7 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 		info.errorCh = errorCh
 	}
 
-	// Spawn target workers
-	log.Printf("Spawning %d target workers", len(dG.targets))
-	for _, info := range dG.targets { // INFO: speed up this thing
-		initCommonChs(info)
-		info.timesCh = make(chan time.Time, info.dependencies)
-		// Spawn worker
-		go func(info *fileInfo) {
-			defer workersWg.Done()
-
-			deps := info.dependencies
-			
-			sTime, err := info.Status(info.filename)
-			if err != nil {
-				log.Printf(
-					"%q doesn't exist. Proceeds to build after wait", 
-					info.filename,
-				)
-				// Only needs to wait for its dependencies
-				for ; deps > 0; deps-- {
-					select {
-					case <-info.panicCh:
-						return
-					case <-info.timesCh:
-					}
-				}	
-				info.build()
-				return
-			}
-
-			// Waits until some of its dependencies
-			// has an update time greater than the target
-			for ; deps > 0; deps-- {
-				select {
-				case <-info.panicCh:
-					return
-				case t := <-info.timesCh:
-					if sTime.After(t) {
-						// Target is more recent
-						// than a given dep
-						continue
-					}	
-					log.Printf(
-						"%q needs to be built. Proceeds to wait",
-						info.filename,
-					)
-					// Doesn't build right after since we 
-					// need to wait for the remaining deps
-					for deps--; deps > 0; deps-- {
-						select {
-						case <-info.panicCh:
-							return
-						case <-info.timesCh:
-						}
-					}
-					info.build()
-					return
-				}
-			}
-			
-			// There isn't any dep whose uptime
-			// is greater than the target
-			info.propagate(sTime)
-		}(info)
-	}
+	spawnTargetWorkers(dG.targets, fileScan, errorCh, &workersWg)
 
 	// Spawn leaf workers
 	log.Printf("Spawning %d leaf workers", len(dG.leafs))

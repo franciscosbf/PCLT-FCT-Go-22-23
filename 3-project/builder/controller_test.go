@@ -4,9 +4,18 @@ import (
 	"cpl_go_proj22/parser"
 	"errors"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"testing"
 	"time"
 )
+
+func init() {
+	if value := os.Getenv("DISABLE_LOG"); value != "" {
+		log.SetOutput(io.Discard)
+	}
+}
 
 var missing = errors.New("missing file")
 
@@ -164,7 +173,7 @@ d2 <- d3 d4 d5;
 	checkInfo("d5", 0, "d2")
 }
 
-func TestBuildWihoutErrors(t *testing.T) {
+func TestBuildWithoutErrors(t *testing.T) {
 	fileScan := &fakeScan{
 		files: map[string]*fakeFileInfo{
 			 "r": {time: convertTime("01")},
@@ -249,5 +258,105 @@ d5 <- d6 d8;
 	if err.filename != "d1" && err.filename != "d5" {
 		t.Fatalf("Expecting build error from d1 or d5. got=%s", err.filename)
 	}
+}
+
+// TestBuildWithBigGraph assumeds that
+// everything is ok
+func TestBuildWithBigDepGraph(t *testing.T) {
+	fileScan := &fakeScan{
+		files: map[string]*fakeFileInfo{
+			  "r": {time: convertTime("20")},
+			 "d1": {time: convertTime("04")},
+			 "d2": {time: convertTime("11")},
+			 "d3": {time: convertTime("06")},
+			 "d4": {},
+			 "d5": {},
+			 "d6": {time: convertTime("16")},
+			 "d7": {},
+			 "d8": {time: convertTime("01")},
+			 "d9": {time: convertTime("04")},
+			"d10": {time: convertTime("13")},
+			"d11": {time: convertTime("06")},
+			"d12": {},
+			"d13": {},
+			"d14": {time: convertTime("02")},
+			"d15": {},
+			"d16": {time: convertTime("01")},
+			"d17": {time: convertTime("26")},
+			"d18": {time: convertTime("03")},
+			"d19": {time: convertTime("14")},
+			"d20": {},
+			"d21": {},
+			"d22": {time: convertTime("02")},
+			"d23": {},
+			"d24": {time: convertTime("01")},
+			"d25": {},
+			"d26": {},
+			"d27": {time: convertTime("06")},
+			"d28": {},
+			"d29": {time: convertTime("01")},
+			"d30": {time: convertTime("20")},
+			"d31": {},
+			"d32": {time: convertTime("02")},
+			"d33": {},
+			"d34": {time: convertTime("24")},
+			"d35": {},
+			"d36": {},
+			"d37": {time: convertTime("02")},
+			"d38": {},
+			"d39": {time: convertTime("25")},
+			"d40": {time: convertTime("01")},
+			"d41": {time: convertTime("14")},
+			"d42": {time: convertTime("01")},
+			"d43": {time: convertTime("15")},
+			"d44": {time: convertTime("16")},
+			"d45": {time: convertTime("01")},
+		},
+	}
+
+	s := `
+r   <- d14 d13 d5;
+d5  <- d12 d24 d1;
+d13 <- d5 d11 d15 d33;
+d14 <- d32 d33;
+d33 <- d15 d44 d19 d32;
+d1  <- d2 d45 d6;
+d24 <- d6 d10;
+d12 <- d11;
+d15 <- d16 d44;
+d44 <- d19;
+d19 <- d16 d43 d20 d34;
+d2  <- d3 d26;
+d45 <- d26;
+d6  <- d26 d25;
+d11 <- d10 d42 d16;
+d20 <- d35;
+d43 <- d31;
+d16 <- d31;
+d31 <- d21 d35;
+d21 <- d35 d36;
+d42 <- d21;
+d10 <- d17 d41;
+d25 <- d10 d41 d9;
+d26 <- d7;
+d3  <- d27 d7;
+d7  <- d27 d4 d28 d29;
+d28 <- d40;
+d4  <- d40;
+d29 <- d8;
+d8  <- d39;
+d9  <- d23;
+d41 <- d23;
+d17 <- d30;
+d30 <- d18 d36;
+d36 <- d37;
+d18 <- d37;
+d23 <- d8 d38 d37 d30;
+`
+	
+	dFile, _ := parser.Parse(s)
+	
+	tunnel := MakeController(dFile, fileScan)
+	<-tunnel
 }
 
