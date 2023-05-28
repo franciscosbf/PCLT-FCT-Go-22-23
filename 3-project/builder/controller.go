@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-var (
-	numCpus = runtime.NumCPU()
-	cpusMargin = 4
-)
+var cpus = runtime.NumCPU()
 
 type MsgType = int
 
@@ -179,6 +176,23 @@ func targetWorker(info *fileInfo, wg *sync.WaitGroup) {
 	info.propagate(sTime)
 }
 
+func leafWorker(info *fileInfo, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	select {
+	case <-info.panicCh:
+		return // Something went wrong
+	default:
+	}
+	
+	if t, err := info.Status(info.filename); err == nil {
+		info.propagate(t)
+		return
+	}
+	log.Printf("%q doesn't exist. Proceeds to build", info.filename)
+	info.build()
+}
+
 func spawnTargetWorkers( 
 	targets []*fileInfo,	
 	fileScan utils.Scan, 
@@ -193,30 +207,57 @@ func spawnTargetWorkers(
 	}
 
 	sz := len(targets)
-	if numCpus > 1 {
-		if sz < numCpus * cpusMargin { goto linear }
-		log.Printf("Spawning %d target workers with %d sub-spawners", sz, numCpus)
-		var wg sync.WaitGroup
-		wg.Add(numCpus)
-		for i := numCpus - 1; i >= 0; i-- {
-			go func(i, j int) {
-				defer wg.Done()
-				for ; i < j; i++ {
-					info := targets[i]
-					initCommonChs(info)
-					go targetWorker(info, workersWg)
-				}
-			}(i * sz / numCpus, (i + 1) * sz / numCpus)
+	log.Printf("Spawning %d target workers with %d sub-spawners", sz, cpus)
+	var wg sync.WaitGroup
+	wg.Add(cpus)
+	for c := cpus - 1; c >= 0; c-- {
+		go func(i, j int) {
+			defer wg.Done()
+			for ; i < j; i++ {
+				info := targets[i]
+				initCommonChs(info)
+				go targetWorker(info, workersWg)
+			}
+		}(c * sz / cpus, (c + 1) * sz / cpus)
+	}
+	wg.Wait()
+}
+
+func spawnLeafWorkers( 
+	leafs map[string]*fileInfo,	
+	fileScan utils.Scan, 
+	errorCh chan *Msg,
+	workersWg *sync.WaitGroup,
+) {
+	initCommonChs := func(info *fileInfo) {
+		info.Scan = fileScan
+		info.panicCh = make(chan struct{}, 1)
+		info.errorCh = errorCh
+	}
+
+	sz := len(leafs)
+	log.Printf("Spawning %d leaf workers with %d sub-spawners", sz, cpus)
+	var wg sync.WaitGroup
+	wg.Add(cpus)
+	fileInfoCh := make(chan *fileInfo, sz)
+	go func() {
+		for _, info := range leafs {
+			fileInfoCh <-info
 		}
-		wg.Wait()
-		return
+	}()
+	for c := cpus - 1; c >= 0; c-- {
+		go func(i, j int) {
+			defer wg.Done()
+			// We need to keep using i and 
+			// j since the sz can be odd
+			for n := j - i; n > 0; n-- {
+				info := <-fileInfoCh
+				initCommonChs(info)
+				go leafWorker(info, workersWg)
+			}
+		}(c * sz / cpus, (c + 1) * sz / cpus)
 	}
-	linear:
-	log.Printf("Spawning %d target workers", sz)
-	for _, info := range targets {
-		initCommonChs(info)
-		go targetWorker(info, workersWg)
-	}
+	wg.Wait()
 }
 
 func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
@@ -230,36 +271,15 @@ func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
 	var workersWg sync.WaitGroup
 	workersWg.Add(workersN)
 
-	initCommonChs := func(info *fileInfo) {
-		info.Scan = fileScan
-		info.panicCh = make(chan struct{}, 1)
-		info.errorCh = errorCh
-	}
+	spawnTargetWorkers(
+		dG.targets, fileScan, 
+		errorCh, &workersWg, 
+	)
 
-	spawnTargetWorkers(dG.targets, fileScan, errorCh, &workersWg)
-
-	// Spawn leaf workers
-	log.Printf("Spawning %d leaf workers", len(dG.leafs))
-	for _, info := range dG.leafs { // INFO: speed up this thing...
-		initCommonChs(info)
-		go func(info *fileInfo) {
-			defer workersWg.Done()
-			
-			select {
-			case <-info.panicCh:
-				return // Something went wrong
-			default:
-			}
-
-			t, err := info.Status(info.filename)
-			if err != nil {
-				log.Printf("%q doesn't exist. Proceeds to build", info.filename)
-				info.build()
-				return
-			}
-			info.propagate(t)
-		}(info)
-	}
+	spawnLeafWorkers(
+		dG.leafs, fileScan, 
+		errorCh, &workersWg, 
+	)
 
 	errMsgCh := make(chan *Msg, 1)
 

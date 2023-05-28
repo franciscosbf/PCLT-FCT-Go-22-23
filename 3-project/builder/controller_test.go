@@ -260,8 +260,7 @@ d5 <- d6 d8;
 	}
 }
 
-// TestBuildWithBigGraph assumeds that
-// everything is ok
+// TestBuildWithBigGraph assumes that everything is ok
 func TestBuildWithBigDepGraph(t *testing.T) {
 	fileScan := &fakeScan{
 		files: map[string]*fakeFileInfo{
@@ -311,47 +310,83 @@ func TestBuildWithBigDepGraph(t *testing.T) {
 			"d43": {time: convertTime("15")},
 			"d44": {time: convertTime("16")},
 			"d45": {time: convertTime("01")},
+
+			"d46": {time: convertTime("07")},
+			"d47": {time: convertTime("14")},
+			"d48": {},
+			"d49": {},
+			"d50": {time: convertTime("18")},
+			"d51": {},
+			"d52": {time: convertTime("10")},
+			"d53": {},
+			"d54": {time: convertTime("01")},
+			"d55": {},
+			"d56": {},
+			"d57": {time: convertTime("06")},
+			"d58": {},
+			"d59": {},
+			"d60": {time: convertTime("12")},
+			"d61": {},
+			"d62": {time: convertTime("08")},
+			"d63": {},
+			"d64": {time: convertTime("18")},
+			"d65": {},
+			"d66": {},
+			"d67": {time: convertTime("10")},
+			"d68": {},
+			"d69": {time: convertTime("25")},
+			"d70": {time: convertTime("08")},
+			"d71": {},
+			"d72": {time: convertTime("04")},
+			"d73": {},
+			"d74": {time: convertTime("27")},
+			"d75": {},
+			"d76": {},
+			"d77": {time: convertTime("02")},
+			"d78": {},
+			"d79": {time: convertTime("06")},
+			"d80": {time: convertTime("07")},
 		},
 	}
 
 	s := `
-r   <- d14 d13 d5;
-d5  <- d12 d24 d1;
-d13 <- d5 d11 d15 d33;
-d14 <- d32 d33;
+r   <- d14 d13 d5 d62 d48 d69;
+d5  <- d12 d24 d1 d57 d68 d48;
+d13 <- d5 d11 d57 d68 d62 d15 d33;
+d14 <- d32 d33 d76 d62 d68;
 d33 <- d15 d44 d19 d32;
-d1  <- d2 d45 d6;
-d24 <- d6 d10;
-d12 <- d11;
-d15 <- d16 d44;
-d44 <- d19;
-d19 <- d16 d43 d20 d34;
-d2  <- d3 d26;
-d45 <- d26;
-d6  <- d26 d25;
-d11 <- d10 d42 d16;
-d20 <- d35;
-d43 <- d31;
-d16 <- d31;
-d31 <- d21 d35;
-d21 <- d35 d36;
-d42 <- d21;
-d10 <- d17 d41;
-d25 <- d10 d41 d9;
-d26 <- d7;
-d3  <- d27 d7;
-d7  <- d27 d4 d28 d29;
-d28 <- d40;
-d4  <- d40;
-d29 <- d8;
-d8  <- d39;
-d9  <- d23;
-d41 <- d23;
-d17 <- d30;
-d30 <- d18 d36;
-d36 <- d37;
-d18 <- d37;
-d23 <- d8 d38 d37 d30;
+d1  <- d2 d45 d6 d76 d48;
+d24 <- d6 d57 d10 d67 d62;
+d12 <- d11 d54 d61 d75 d67;
+d15 <- d16 d44 d46 d51 d66;
+d44 <- d19 d51 d65 d66 d74;
+d19 <- d16 d43 d20 d65 d34 d51;
+d2  <- d70 d3 d26 d80 d57 d74 d51;
+d45 <- d69 d26 d77 d62 d54;
+d6  <- d26 d25 d51 d55;
+d11 <- d10 d42 d79 d57 d16 d46;
+d20 <- d35 d47 d62 d73 d58;
+d43 <- d31 d58 d54 d59;
+d16 <- d31 d50 d65 d55;
+d31 <- d21 d35 d73 d56 d47;
+d21 <- d70 d35 d36 d62 d54;
+d42 <- d21 d79 d58 d65 d59;
+d10 <- d17 d41 d46 d73 d50;
+d25 <- d10 d41 d56 d9 d51;
+d26 <- d7 d52 d77 d55 d63;
+d3  <- d70 d27 d7 d57 d59 d58;
+d7  <- d27 d4 d28 d29 d61;
+d28 <- d70 d40 d61 d53 d55 d60;
+d4  <- d40 d48 d60 d64 d78;
+d29 <- d8 d48 d72 d56 d49;
+d8  <- d39 d56 d61 d58;
+d9  <- d70 d23 d48 d64 d50;
+d41 <- d23 d59 d56 d77 d78;
+d17 <- d30 d50 d72 d61 d64;
+d30 <- d71 d18 d64 d59 d77 d36;
+d36 <- d37 d50 d65 d60 d55;
+d18 <- d71 d72 d37 d60 d65 d78 d58 d61;
+d23 <- d8 d38 d60 d58 d37 d30 d50;
 `
 	
 	dFile, _ := parser.Parse(s)
