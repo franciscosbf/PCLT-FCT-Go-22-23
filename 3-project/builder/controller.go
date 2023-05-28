@@ -239,7 +239,7 @@ func spawnLeafWorkers(
 
 	sz := len(leafs)
 	log.Printf("Spawning %d leaf workers with %d sub-spawners", sz, cpus)
-	fileInfoCh := make(chan *fileInfo, sz)
+	fileInfoCh := make(chan *fileInfo, cpus)
 	go func() {
 		for _, info := range leafs {
 			fileInfoCh <-info
