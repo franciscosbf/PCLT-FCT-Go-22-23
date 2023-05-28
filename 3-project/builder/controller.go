@@ -208,6 +208,8 @@ func spawnTargetWorkers(
 
 	sz := len(targets)
 	log.Printf("Spawning %d target workers with %d sub-spawners", sz, cpus)
+	// WaitGroup is necessary here since
+	// leafs depend on these workers
 	var wg sync.WaitGroup
 	wg.Add(cpus)
 	for c := cpus - 1; c >= 0; c-- {
@@ -237,8 +239,6 @@ func spawnLeafWorkers(
 
 	sz := len(leafs)
 	log.Printf("Spawning %d leaf workers with %d sub-spawners", sz, cpus)
-	var wg sync.WaitGroup
-	wg.Add(cpus)
 	fileInfoCh := make(chan *fileInfo, sz)
 	go func() {
 		for _, info := range leafs {
@@ -247,7 +247,6 @@ func spawnLeafWorkers(
 	}()
 	for c := cpus - 1; c >= 0; c-- {
 		go func(i, j int) {
-			defer wg.Done()
 			// We need to keep using i and 
 			// j since the sz can be odd
 			for n := j - i; n > 0; n-- {
@@ -257,7 +256,6 @@ func spawnLeafWorkers(
 			}
 		}(c * sz / cpus, (c + 1) * sz / cpus)
 	}
-	wg.Wait()
 }
 
 func MakeController(file *parser.DepFile, fileScan utils.Scan) chan *Msg {
